@@ -1,7 +1,7 @@
 #! /bin/bash
 
 func(){
-echo "hello new semester"
+echo "hello world"
 }
 
 func
