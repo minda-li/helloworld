@@ -44,14 +44,23 @@ void reduce(float *d_matrix, float *d_reduced_matrix, int num_rows, int num_cols
 
 // CUDA Prefix Product Kernel
 __global__ void prefix_product_kernel(float *matrix, float *prefix_products, int size) {
+    extern __shared__ float shared_mem[];
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < size) {
-        if (idx == 0) {
-            prefix_products[idx] = matrix[idx];
-        } else {
-            prefix_products[idx] = matrix[idx] * prefix_products[idx - 1];
+        shared_mem[threadIdx.x] = matrix[idx];
+        __syncthreads();
+        
+        for (int stride = 1; stride < blockDim.x; stride *= 2) {
+            float val = 1.0f;
+            if (threadIdx.x >= stride) {
+                val = shared_mem[threadIdx.x - stride];
+            }
+            __syncthreads();
+            shared_mem[threadIdx.x] *= val;
+            __syncthreads();
         }
+        prefix_products[idx] = shared_mem[threadIdx.x];
     }
 }
 
@@ -59,9 +68,8 @@ void prefix_product(float *d_matrix, float *d_prefix_products, int num_rows, int
     int size = num_rows * num_cols;
     dim3 blockSize(256);
     dim3 gridSize((size + blockSize.x - 1) / blockSize.x);
-    prefix_product_kernel<<<gridSize, blockSize>>>(d_matrix, d_prefix_products, size);
+    prefix_product_kernel<<<gridSize, blockSize, blockSize.x * sizeof(float)>>>(d_matrix, d_prefix_products, size);
 }
-
 
 int main() {
     // Define matrix dimensions and other parameters
